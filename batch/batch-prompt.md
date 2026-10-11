@@ -19,8 +19,7 @@
 | `config/target_pool.md` | 总是 | **Tier A/B/C/D 公司池、候选人画像、Tier D 触发关键词** |
 | `modes/_shared.md` | 总是 | **framing 规则、中国大陆薪酬源、评分权重、职级对标表、Tier 检测流程** |
 | `CLAUDE.md` | 如遇 TSV / tracker 格式疑问 | TSV 10 列规范和 canonical 状态 |
-| `templates/cv-template.html` | 生成 PDF 时 | HTML 模板 |
-| `tools/generate-pdf.mjs` | 生成 PDF 时 | Puppeteer 脚本 |
+| `modes/pdf.md` | 生成 PDF 时 | 简历 md 格式与硬性规则（全黑、禁箭头、页眉不放项目链接） |
 
 **核心规则：**
 - 永远不要写 cv.md
@@ -102,10 +101,10 @@ Body 是完整 A-F + 末尾 15-20 个 JD 关键词（供 ATS）。
 7. 选 top 3-4 项目，按 JD 相关性重排 bullets
 8. 构建 competency grid（6-8 个关键词）
 9. 关键词**只能**注入到候选人真实经历里 — 永远不要编造技能
-10. 用 `templates/cv-template.html` 生成 HTML → 写 `/tmp/cv-candidate-{slug}.html`
+10. 按 `modes/pdf.md` 的「Markdown 格式」写 `output/cv-candidate-{slug}-{{DATE}}.md`（全部纯黑由脚本保证；正文禁止用箭头串流程，页眉不放项目链接）
 11. 执行：
     ```bash
-    node tools/generate-pdf.mjs /tmp/cv-candidate-{slug}.html output/cv-candidate-{slug}-{{DATE}}.pdf --format={letter|a4}
+    npm run cv -- output/cv-candidate-{slug}-{{DATE}}.md [--format=letter]
     ```
 12. 报告：PDF 路径、页数、关键词覆盖率
 

@@ -21,7 +21,8 @@
     "feishu:digest": "node tools/feishu/notify.mjs",
     "feishu:insights": "node tools/feishu/insights.mjs",
     "tracker:backfill-track": "node tools/backfill-track.mjs",
-    "tracker:reconcile": "node tools/setup-bitable-tracker.mjs --reconcile"
+    "tracker:reconcile": "node tools/setup-bitable-tracker.mjs --reconcile",
+    "cv": "node tools/cv-md-to-pdf.mjs"
   },
   "keywords": [
     "ai",
@@ -38,6 +39,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "marked": "12.0.2",
     "playwright": "^1.58.1"
   }
 }

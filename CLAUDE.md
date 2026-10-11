@@ -22,8 +22,8 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `data/pipeline.md` | Inbox of pending URLs |
 | `data/scan-history.tsv` | Scanner dedup history |
 | `portals.yml` | Query and company config |
-| `templates/cv-template.html` | HTML template for CVs |
-| `tools/generate-pdf.mjs` | Puppeteer: HTML to PDF |
+| `tools/cv-md-to-pdf.mjs` | Tailored CV markdown → PDF (`npm run cv -- file.md`); the .md in `output/` is the editable source |
+| `templates/cv-template.html` + `tools/generate-pdf.mjs` | Legacy HTML → PDF path, kept for old files only |
 | `article-digest.md` | Compact proof points from portfolio (optional) |
 | `interview-prep/story-bank.md` | Accumulated STAR+R stories across evaluations |
 | `reports/` | Evaluation reports (format: `{###}-{company-slug}-{YYYY-MM-DD}.md`) |
@@ -139,7 +139,7 @@ This system is designed to be customized by YOU (Claude). 用户让你改 archet
 - "把 modes 翻成英文" → 改 `modes/` 下所有文件
 - "把这些公司加到 portals" → 改 `portals.yml`
 - "更新我的 profile" → 改 `config/profile.yml`
-- "改 CV 模板设计" → 改 `templates/cv-template.html`
+- "改 CV 模板设计" → 改 `tools/cv-md-to-pdf.mjs` 里的样式表（只能用纯黑）
 - "调评分权重" → 用户特定权重改 `modes/_profile.md`，系统默认权重改 `modes/_shared.md` 和 `batch/batch-prompt.md`
 - "我对 996 容忍度变高了" → 改 `modes/offers.md` 的工时权重
 - "我现在主攻方向变成 X" → 改 `modes/_profile.md` 的 archetype 列表

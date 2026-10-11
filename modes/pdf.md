@@ -24,13 +24,14 @@
 9. 按 JD 相关性重新排序工作经历的 bullets
 10. 构建 competency grid（6-8 个关键词短语）
 11. 把关键词自然注入到现有成就描述中（**永远不要编造新技能**）
-12. 用 template + 个性化内容生成完整 HTML
-13. 把 HTML 写到 `/tmp/cv-candidate-{company}.html`
-14. 执行：`node tools/generate-pdf.mjs /tmp/cv-candidate-{company}.html output/cv-candidate-{company}-{track}-{YYYY-MM-DD}.pdf --format={letter|a4}`
+12. 按下方「Markdown 格式」写定制简历，存为 `output/cv-candidate-{company}-{track}-{YYYY-MM-DD}.md`
     - **文件名带 track 后缀**（如 `-ai-app` / `-auto-data`）。同一家车企可能两个方向都投，没有后缀就会互相覆盖，而且事后分不清「这家投的是哪版简历」
-15. 报告：PDF 路径、页数、关键词覆盖率、**用的哪个 CV 源**（回落了就明说）
+13. 执行：`npm run cv -- output/cv-candidate-{company}-{track}-{YYYY-MM-DD}.md [--format=letter]`，PDF 生成在 md 旁边、同名
+    - 脚本会在正文出现箭头时**直接失败**，按报错改成中文句子再跑
+14. 报告：md 与 PDF 路径、页数、关键词覆盖率、**用的哪个 CV 源**（回落了就明说）
 
-> `tools/generate-pdf.mjs` 不需要改 —— 它只做 html→pdf，选源发生在本 mode 层。
+> **md 是定制简历的唯一源文件**（2026-10-11 起）。候选人自己改小地方就是改 md 再跑一次 `npm run cv`，不要再生成 HTML 让人手改。
+> 旧的 `templates/cv-template.html` + `tools/generate-pdf.mjs` 只保留给历史文件，新简历不要用。
 
 ## ATS 规则（保证机器能解析）
 
@@ -49,7 +50,13 @@
   - 互联网大厂一般不要照片
   - 国企/外企 / 偏 ToB 的公司常见放照片
 - **是否写出生年月**：默认不写。如果是国企/外企可加。35 岁以上的候选人不建议写
-- **工作经历描述模式**：「业务背景 → 我的角色 → 技术方案 → 量化结果」
+- **工作经历描述模式**：依次交代业务背景、我的角色、技术方案和量化结果
+- ⛔ **硬性规则（候选人 2026-10-11 明确要求，不得再改回）：**
+  1. **全部文字一律纯黑 `#000`**。标题、公司名、项目名、标签、链接、日期都不例外；不用彩色、不用灰字、不用彩色底纹或渐变线。
+  2. **正文禁止用箭头串流程**（`A → B → C`、`57s → 10s`、`ODS→DWS` 都不行）。改写成通顺的中文句子，例如「依次完成意图识别、Schema 召回、SQL 生成和自修正」「端到端延迟从 57 秒降到 10 秒」「ODS、DWD、DWS 三层数仓」。
+  3. **页眉只放联系方式**（邮箱、GitHub 主页、个人网站、所在城市与到岗时间）。个人项目的链接只出现在对应项目段落里，不进页眉，也不进摘要。
+  4. **Section 标题用标准名称**：「项目经历」「工作经历」等，不加「（Agent Demo）」这类括号后缀；摘要里也不要写「两个可直接体验的 Demo」这种推销腔。
+  颜色由 `tools/cv-md-to-pdf.mjs` 的样式表保证（只有 `#000`），箭头由它在构建时拦截。
 - **量化结果**：QPS、p99、SLA、降本百分比、用户量、AB 实验提升 — 越具体越好
 - **技术栈**：用国内通用术语（如「数据中台」「数仓分层 ODS/DWD/DWS/ADS」「Doris/StarRocks」），不要硬翻译
 
@@ -57,18 +64,18 @@
 
 - **字体**：Space Grotesk（标题，600-700）+ DM Sans（正文，400-500）+ 中文字体 fallback（PingFang SC / Microsoft YaHei / Noto Sans SC）
 - **字体自托管**：`fonts/`
-- **Header**：姓名 Space Grotesk 24px bold + 渐变线 `linear-gradient(to right, hsl(187,74%,32%), hsl(270,70%,45%))` 2px + 联系信息行
-- **Section 标题**：Space Grotesk 13px，uppercase（中文 section 不 uppercase），letter-spacing 0.05em，颜色 cyan primary
-- **正文**：DM Sans 11px（中文用对应 fallback），行高 1.5
-- **公司名**：accent purple `hsl(270,70%,45%)`
+- **Header**：姓名 + 联系信息行 + 纯黑分隔线
+- **Section 标题**：Space Grotesk 13px，uppercase（中文 section 不 uppercase），letter-spacing 0.05em，纯黑
+- **正文**：DM Sans 11px（中文用对应 fallback），行高 1.5，纯黑
+- **公司名 / 项目名**：纯黑，用字重区分层级，不用颜色
 - **页边距**：0.6in
 - **背景**：纯白
 
 ## Section 顺序（"6 秒 HR 扫描"优化）
 
-1. Header（大字姓名、渐变线、联系方式、portfolio 链接）
+1. Header（姓名、联系方式、所在城市；不放项目链接）
 2. Professional Summary / 专业摘要（3-4 行，关键词密集）
-3. Core Competencies / 核心能力（6-8 个关键词短语 flex-grid）
+3. Core Competencies / 核心能力（6-8 个关键词短语，一行用 ` · ` 分隔）
 4. Work Experience / 工作经历（倒序）
 5. Projects / 项目经历（top 3-4）
 6. Education / 教育 & Certifications / 证书
@@ -83,35 +90,44 @@
 
 **绝不添加候选人没有的技能。只用 JD 的精确措辞重写真实经历。**
 
-## HTML Template
+## Markdown 格式
 
-用 `templates/cv-template.html`。把 `{{...}}` placeholder 替换成个性化内容：
+样式全部由 `tools/cv-md-to-pdf.mjs` 决定，md 里只写内容。
 
-| Placeholder | 内容 |
-|-------------|------|
-| `{{LANG}}` | `zh-CN` 或 `en` |
-| `{{PAGE_WIDTH}}` | `8.5in`（letter）或 `210mm`（A4） |
-| `{{NAME}}` | （from profile.yml） |
-| `{{EMAIL}}` | （from profile.yml） |
-| `{{LINKEDIN_URL}}` | （from profile.yml） |
-| `{{LINKEDIN_DISPLAY}}` | （from profile.yml） |
-| `{{PORTFOLIO_URL}}` | （from profile.yml） |
-| `{{PORTFOLIO_DISPLAY}}` | （from profile.yml） |
-| `{{LOCATION}}` | （from profile.yml） |
-| `{{SECTION_SUMMARY}}` | `专业摘要` 或 `Professional Summary` |
-| `{{SUMMARY_TEXT}}` | 关键词注入后的 summary |
-| `{{SECTION_COMPETENCIES}}` | `核心能力` 或 `Core Competencies` |
-| `{{COMPETENCIES}}` | `<span class="competency-tag">关键词</span>` × 6-8 |
-| `{{SECTION_EXPERIENCE}}` | `工作经历` 或 `Work Experience` |
-| `{{EXPERIENCE}}` | 工作经历 HTML |
-| `{{SECTION_PROJECTS}}` | `项目经历` 或 `Projects` |
-| `{{PROJECTS}}` | top 3-4 项目 HTML |
-| `{{SECTION_EDUCATION}}` | `教育背景` 或 `Education` |
-| `{{EDUCATION}}` | 教育 HTML |
-| `{{SECTION_CERTIFICATIONS}}` | `证书` 或 `Certifications` |
-| `{{CERTIFICATIONS}}` | 证书 HTML |
-| `{{SECTION_SKILLS}}` | `技能` 或 `Skills` |
-| `{{SKILLS}}` | 技能 HTML |
+```markdown
+# 姓名
+
+邮箱 · github.com/xxx · 个人网站
+
+现居城市 · 到岗时间
+
+## 专业摘要
+
+一段话。
+
+## 核心能力
+
+关键词一 · 关键词二 · 关键词三
+
+## 项目经历
+
+### 项目名 — 一句话定位（个人开源）　2025.08 – 至今
+
+- **小标题：** 一句完整的中文描述，数字用 **加粗**。
+
+技术栈：A、B、C。仓库：github.com/xxx/yyy
+
+## 工作经历
+
+### 公司 — 部门 · 职位　2023.03 – 2024.08
+
+- **小标题：** ……
+```
+
+约定：
+- `#` 和第一个 `##` 之间的段落自动成为页眉联系信息（小字 + 分隔线）
+- `###` 以日期区间结尾（`2023.03 – 2024.08` / `2025.08 – 至今`）时，日期自动右对齐
+- 链接直接写纯文本（`github.com/xxx`），不要用 `[文字](url)`，ATS 读的是可见文字
 
 ## 生成后
 

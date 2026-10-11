@@ -188,7 +188,7 @@
 | WebSearch | 薪酬调研、趋势、公司文化、LinkedIn/脉脉 联系人、JD fallback |
 | WebFetch | 静态页面 JD 提取 |
 | Playwright | 验证岗位是否还在招（browser_navigate + browser_snapshot），SPA 上提取 JD。**关键：不要并行启动 2 个以上带 Playwright 的 agent — 它们共享一个浏览器实例。** 中国大陆门户（Boss直聘/拉勾/猎聘/智联）多数需要登录，Playwright 默认会被挡 — 见 `modes/scan.md` 的处理方式 |
-| Read | cv.md（及按 track 选的变体）, article-digest.md, _profile.md, target_pool.md, cv-template.html |
-| Write | 临时 HTML for PDF, reports .md, `batch/tracker-additions/*.tsv` |
+| Read | cv.md（及按 track 选的变体）, article-digest.md, _profile.md, target_pool.md |
+| Write | 定制简历 `output/cv-candidate-*.md`, reports .md, `batch/tracker-additions/*.tsv` |
 | Bash + tracker-backend | 更新 tracker（`updateApplication` / `updateMany`）—— **不要用 Write/Edit 碰 applications.md** |
-| Bash | `node tools/generate-pdf.mjs`（或 `npm run pdf`） |
+| Bash | `npm run cv -- output/cv-candidate-*.md`（md 转 PDF，格式见 `modes/pdf.md`） |
