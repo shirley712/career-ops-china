@@ -184,6 +184,10 @@ function throttle() {
  * @param opts.format     output format, default 'json'; pass null to omit
  * @param opts.timeoutMs  default 30000
  */
+// Commands whose JSON switch is `--json`, not `--format json`.
+// Verified against `lark-cli <cmd> --help` on 1.0.96 — do not add from memory.
+const JSON_FLAG_COMMANDS = new Set(['auth', 'whoami']);
+
 export function runLarkCli(args, opts = {}) {
   const { write = false, profile, format = 'json', timeoutMs = 30000 } = opts;
 
@@ -196,7 +200,16 @@ export function runLarkCli(args, opts = {}) {
 
   const full = [...args];
   if (!full.includes('--profile')) full.push('--profile', resolveProfile(profile));
-  if (format && !full.includes('--format')) full.push('--format', format);
+
+  // A few top-level commands predate --format and take a bare --json instead;
+  // passing --format to them is a hard usage error. Handled here rather than at
+  // each call site, because "which flag does this one take" is exactly the kind
+  // of detail a caller will get wrong (and did: setup's auth probe shipped
+  // broken for a day because it went through the generic path).
+  if (format && !full.includes('--format') && !full.includes('--json')) {
+    if (JSON_FLAG_COMMANDS.has(full[0])) full.push('--json');
+    else full.push('--format', format);
+  }
   // Writes require user identity: the bot token has read-only scope and write
   // attempts come back as 91403.
   if (write && !full.includes('--as')) full.push('--as', 'user');
@@ -227,6 +240,15 @@ function classifyError(result, args) {
   const out = (result.stderr || '') + (result.stdout || '') + (e.message ? `\n${e.message}` : '');
   const cmd = `lark-cli ${args.filter(a => !/^(--app-secret|--token)/.test(a)).join(' ')}`;
 
+  // lark-cli reports API failures as a JSON envelope carrying code/message/hint.
+  // Lift those onto the FIRST line: callers routinely log only the first line of
+  // an error, and a generic "lark-cli error:" header there means the real reason
+  // (e.g. `options[0].hue: use one of "Red","Orange",…`) is silently discarded.
+  const api = extractApiError(out);
+  if (api) {
+    return new Error(`${api}\n  cmd: ${cmd}`);
+  }
+
   if (/unknown flag|unknown command|invalid argument/i.test(out)) {
     return new Error(`lark-cli usage error (bug in career-ops, not your config):\n${cmd}\n${out}`);
   }
@@ -252,6 +274,27 @@ function classifyError(result, args) {
   return new Error(`lark-cli error:\n${cmd}\n${out.trim() || e.message}`);
 }
 
+/**
+ * Pull `code: message — hint` out of a lark-cli JSON error envelope, on one line.
+ * Returns null when the output isn't such an envelope, so the generic
+ * classifiers below still get their turn.
+ */
+function extractApiError(out) {
+  const m = out.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let d;
+  try { d = JSON.parse(m[0]); } catch { return null; }
+  const e = d?.error;
+  if (!e || !(e.message || e.hint)) return null;
+  const parts = [];
+  if (e.code) parts.push(`lark-cli API ${e.code}`);
+  else parts.push(`lark-cli ${e.type || 'error'}${e.subtype ? `/${e.subtype}` : ''}`);
+  if (e.message) parts.push(e.message);
+  if (e.hint) parts.push(e.hint);
+  // One line, so a caller printing only split('\n')[0] still sees the reason.
+  return parts.join(' — ').replace(/\s*\n\s*/g, ' ');
+}
+
 function resolveProfileSafe() {
   try { return resolveProfile(); } catch { return '<profile>'; }
 }
@@ -271,6 +314,61 @@ export function parseJsonOut(stdout) {
     if (m) return JSON.parse(m[0]);
     throw new Error(`Failed to parse lark-cli output as JSON. Got:\n${stdout.slice(0, 500)}`);
   }
+}
+
+/**
+ * Scopes each capability actually needs, as the exact strings lark-cli reports.
+ *
+ * Written out rather than derived from a domain prefix because a domain is not a
+ * permission: the `task` domain alone covers ten scopes and only two of them let
+ * you create a task. Checking the prefix would report "granted" for a token that
+ * then fails with missing_scope at write time.
+ *
+ * Verify a string with `lark-cli schema <service.resource.method>` before editing
+ * this table — do not write one from memory.
+ */
+export const CAPABILITY_SCOPES = {
+  bitable:   ['base:record:read', 'base:record:update', 'base:field:read'],
+  dashboard: ['base:dashboard:read', 'base:dashboard:create'],
+  calendar:  ['calendar:calendar.event:create', 'calendar:calendar.free_busy:read'],
+  task:      ['task:task:read', 'task:task:write'],
+  im_card:   ['im:message.send_as_user'],
+  docs:      ['drive:file:upload', 'docx:document:create'],
+};
+
+/**
+ * The scopes the configured profile's USER token currently carries.
+ *
+ * One `auth status --json` call covers every domain, which is both cheaper and
+ * more honest than probing per capability. Note `whoami` and `auth status` take
+ * `--json`, not `--format json` — passing the latter is a usage error, so format
+ * injection is suppressed here.
+ *
+ * Returns { ok, scopes: Set<string>, identity, error }.
+ */
+export function grantedScopes() {
+  try {
+    const raw = runLarkCli(['auth', 'status', '--json'], { format: null, timeoutMs: 20000 });
+    const d = parseJsonOut(raw) || {};
+    const user = d.identities?.user || {};
+    const scopes = new Set(String(user.scope || '').split(/\s+/).filter(Boolean));
+    return {
+      ok: user.available === true || scopes.size > 0,
+      scopes,
+      // Only non-sensitive identity bits. The rest of the payload includes token
+      // state and must not be printed or logged.
+      identity: { name: user.userName || '', openId: user.openId || '', status: user.status || '' },
+      appId: d.appId || '',
+    };
+  } catch (e) {
+    return { ok: false, scopes: new Set(), identity: null, error: e.message };
+  }
+}
+
+/** Missing scopes for a capability, given a granted-scope set. */
+export function missingScopes(cap, granted) {
+  const need = CAPABILITY_SCOPES[cap] || [];
+  return need.filter(sc => !granted.has(sc));
 }
 
 /** Health check used by `npm run feishu:check` and modes/feishu.md. */

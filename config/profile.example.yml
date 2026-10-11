@@ -71,9 +71,46 @@ location:
 #   md      — Traditional markdown table (data/applications.md). Default, zero setup.
 #   bitable — Feishu/Lark Bitable as single source of truth; md is auto-regenerated as read-only snapshot.
 #             Requires `lark-cli` installed + authenticated. Run `npm run tracker:setup` first.
+# ─────────────────────────────────────────────────────────────────────
+# Feishu / Lark integration — OPTIONAL plugin layer
+#
+# Everything here can stay off. The core flow (evaluation, tracker, PDF, scan)
+# never depends on Feishu: with `enabled: false` every Feishu action returns
+# { skipped: true }, the caller prints one degradation line and carries on.
+# Reminders that would have gone to calendar/task are appended to
+# data/reminders.md instead, so nothing is silently dropped.
+#
+# The Bitable tracker backend is the one exception: it predates this block and
+# is still controlled by `tracker.backend` above, not by capabilities.bitable.
+#
+# Each capability needs its own OAuth scopes. Do NOT just run `auth login` —
+# follow the grant procedure in modes/feishu.md (check what the app side allows
+# first, so you don't scan a QR code for a scope you can't be granted).
+# ─────────────────────────────────────────────────────────────────────
+feishu:
+  enabled: false
+  profile: ""                    # lark-cli profile name; required when enabled
+
+  capabilities:
+    bitable: true                # tracker backend (effective switch is tracker.backend)
+    calendar: false              # interview events                     — scope domain: calendar
+    task: false                  # follow-up + pre-interview reminders  — scope domain: task
+    im_card: false               # daily digest to your own DM          — scope domain: im
+    dashboard: false             # Bitable dashboards (reuses base scopes)
+    docs: false                  # push CVs/reports to the cloud        — scope domains: drive, docx
+
+  config:
+    self_open_id: ""             # digest recipient = you. Get it from `lark-cli whoami --profile <p>`
+
 tracker:
   backend: md  # md | bitable
   bitable:
+    profile: ""                        # REQUIRED for the bitable backend: which lark-cli profile to use.
+                                       #   `lark-cli config init --name <profile> ...` creates one.
+                                       #   Left empty, every tracker write fails loudly rather than
+                                       #   falling back to the CLI's global default profile — that
+                                       #   default is mutable shared state and another session can
+                                       #   silently repoint it at a different tenant.
     app_token: ""                      # Bitable app token (filled by setup wizard)
     table_id_applications: ""
     table_id_outreach: ""

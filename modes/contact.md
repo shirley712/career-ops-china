@@ -43,8 +43,12 @@
 - 用户说「#XX 发了」/「投了」/「试一下同步」 → Claude 跑 `npm run sync-outreach`
 - 也可以用户自己手动跑
 
+**顺手建跟进提醒：** 每条 `Evaluated → Applied` 会同时建一个 **+3 天的跟进任务**（飞书 task）。
+这是 2026-07 停摆的发生点 —— 18 条触达发出去之后三个月无人跟进，因为「3 天后跟进」只存在候选人脑子里。
+`feishu.capabilities.task` 没开时提醒落到 `data/reminders.md`（降级但不丢）。详见 `modes/feishu.md`。
+
 **脚本规则（`tools/sync-outreach-status.mjs`）：**
-- 不降级（如果状态已是 Applied/Responded/Interview/Offer/Rejected/Discarded/SKIP，不动）
+- 不降级（如果状态已是 Applied/Responded/Interview/Offer/Rejected/Discarded/SKIP/Blocked，不动）
 - 幂等（重复跑不会重复改）
 - HR 回复列**不自动解析**（自然语言太脆弱）。脚本只检测 HR 回复列非空，提示用户「可能要手动升 Responded/Interview」，由 Claude 询问后改
 
@@ -52,6 +56,9 @@
 - 用户在发送记录 HR 回复列填 "约一面"、"加微信了"、"拒了"
 - 用户告诉 Claude：「#XX HR 回了」/「#XX 进面试了」
 - Claude 根据 `templates/states.yml` aliases 调 `updateApplication(num, { status, notes })`
+- **升到 `Interview` 时顺手建日程**：调 `tools/feishu/schedule.mjs` 的 `createInterviewEvent({num, company, role, start, description})`。
+  `description` 吃 Markdown —— 把 JD 摘要 + 公司背调 + 提问清单直接塞进日程描述，手机上开会前十分钟就能看到。
+  它会自动再挂一个「面试前 24h 过简历一致性」的任务。
   ⚠️ **不要 Edit `data/applications.md`** —— `backend: bitable` 下它是 `tracker:export` 生成的只读快照，改了会被下次 export 覆盖
 
 ## Boss 直聘触达（国内求职主渠道）

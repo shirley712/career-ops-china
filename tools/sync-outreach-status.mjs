@@ -10,6 +10,11 @@
 //   - Idempotent. Running twice produces no extra changes.
 //   - HR 回复 column is NOT auto-parsed — too fragile. Prints a hint
 //     so the user can upgrade Responded/Interview manually.
+//   - Every Evaluated → Applied also schedules a +3d follow-up reminder. This is
+//     the exact point where the 2026-07 stall happened: 18 messages went out and
+//     nothing ever chased them, because "follow up in 3 days" lived only in the
+//     candidate's head. With feishu.capabilities.task off it lands in
+//     data/reminders.md instead — degraded, but not lost.
 //
 // Reads and writes the tracker through tools/tracker-backend.mjs rather than
 // editing data/applications.md directly. Two reasons:
@@ -23,6 +28,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { listApplications, updateMany, getBackend } from "./tracker-backend.mjs";
+import { createFollowUpTask } from "./feishu/schedule.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUTREACH = join(ROOT, "outreach");
@@ -114,6 +120,23 @@ if (pending.length > 0 && !dryRun) {
   if (backend.backendName === "bitable") {
     console.log("   运行 `npm run tracker:export` 刷新 data/applications.md 快照");
   }
+
+  // Schedule the follow-up nudges. Deliberately after the tracker write and
+  // non-fatal: a reminder that fails to schedule must not undo a status change
+  // that already succeeded. The idempotency key makes a re-run safe.
+  const missingSet = new Set(missing.map(Number));
+  let scheduled = 0, degraded = 0, failed = 0;
+  for (const p of pending) {
+    if (missingSet.has(p.num)) continue;
+    const row = byNum.get(p.num);
+    const res = createFollowUpTask({ num: p.num, company: row?.company, role: row?.role });
+    if (res.skipped) degraded++;
+    else if (res.ok) scheduled++;
+    else { failed++; console.log(`⚠️  #${p.num} 跟进提醒没建上: ${res.error.split("\n")[0]}`); }
+  }
+  if (scheduled) console.log(`⏰ 已建 ${scheduled} 个 +3 天跟进提醒（飞书任务）`);
+  if (degraded) console.log(`⏰ ${degraded} 个提醒落到 data/reminders.md（飞书 task 能力未开）`);
+  if (failed) console.log(`⚠️  ${failed} 个提醒建失败 —— tracker 状态已改，提醒要自己补`);
 }
 
 console.log(`\n📊 升级: ${pending.length}${dryRun ? "（dry-run，未写入）" : ""}, 无变化: ${noop}, 跳过: ${skipped}`);
