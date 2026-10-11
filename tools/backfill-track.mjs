@@ -10,9 +10,7 @@
  *
  * What IS worth labelling is the handful of automotive rows that went through the
  * pipeline before the second direction existed. They are all closed, so they will
- * never convert; their value is as denominator history in the per-track funnel —
- * in particular #62 (the HR-screen rejection that the evidence gate exists
- * because of) and #258 (an automotive Agent role that scored 4.0).
+ * never convert; their value is as denominator history in the per-track funnel.
  *
  * ── Why some automotive-looking rows are deliberately left blank ──
  * `auto-data` is defined as ADAS data-loop / data-platform work, and explicitly
@@ -27,25 +25,21 @@
  *      node tools/backfill-track.mjs --apply    # writes via updateMany()
  */
 
+import { readFileSync } from 'node:fs';
 import { listApplications, updateMany, getBackend, normalizeTrack } from './tracker-backend.mjs';
 
-// num → track. Hand-classified; each line is a judgement, so each carries its reason.
-const ASSIGN = {
-  62:  { track: 'auto-algo',  why: '佑驾创新 MINIEYE 深度学习算法岗 —— 感知/规控，HR 初筛即挂，是证据闸门的由来' },
-  105: { track: 'auto-data',  why: '蔚来「数据开发（AI知识方向）」—— 车企 + AI 数据方向' },
-  258: { track: 'ai-app-auto', why: '小鹏「AI Agents 开发工程师」—— 车企里的 Agent 应用岗，4.0 分' },
-  209: { track: 'ai-app-auto', why: '苏州云体「AI Agent 工程师（汽车+制造）」—— Agent 应用，行业是汽车' },
-  83:  { track: 'auto-data',  why: '联友科技「AI 数据治理 / 高质量数据集建设（汽车营销）」—— 汽车域数据治理' },
-};
-
-// Automotive employer, but the ROLE is not on either automotive track.
-const LEFT_BLANK = {
-  46:  '岚图汽车「大数据开发（数仓方向）」—— 车企的普通数仓，不是智驾数据闭环；按 deal_breakers 本就不该投',
-  47:  '岚图汽车「数据开发」—— 同上',
-  48:  '岚图汽车「资深 BI 开发工程师」—— BI 报表，离数据闭环更远',
-  64:  '泰伦理信代招「大数据迁移工程师」—— 代招 + 搬站，雇佣形式和岗位内容都不成立',
-  65:  '中科创达「大数据开发」—— 公司沾智能座舱，但岗位是通用大数据，JD 里没有智驾场景',
-};
+// The row-by-row classification is personal application history, so it lives
+// in a gitignored file, not here (this repo is public). Shape:
+//   { "assign":     { "<num>": { "track": "<track_id>", "why": "<reason>" } },
+//     "left_blank": { "<num>": "<why this automotive-employer row gets no track>" } }
+const DATA_FILE = new URL('../config/track-backfill.json', import.meta.url);
+let ASSIGN, LEFT_BLANK;
+try {
+  ({ assign: ASSIGN = {}, left_blank: LEFT_BLANK = {} } = JSON.parse(readFileSync(DATA_FILE, 'utf8')));
+} catch (e) {
+  console.error(`没有读到 config/track-backfill.json（${e.code || e.message}）。格式见本文件注释。`);
+  process.exit(1);
+}
 
 const apply = process.argv.includes('--apply');
 

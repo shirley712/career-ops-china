@@ -110,7 +110,7 @@ function judge(title) {
 // Cases only assert on the live config: the template ships one example track,
 // so automotive cases cannot pass there.
 const cases = usingLive ? [
-  ['小鹏汽车 — AI Agents开发工程师', true],
+  ['某车企 — AI Agents 开发工程师', true],
   ['理想汽车 — 智能座舱 AI 应用工程师', true],
   ['Momenta — 智驾数据闭环工程师（自动标注/场景挖掘）', true],
   ['地平线 — BEV 感知算法工程师', true],
