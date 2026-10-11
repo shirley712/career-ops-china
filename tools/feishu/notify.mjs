@@ -7,6 +7,13 @@
  * track, a high-scoring evaluation nobody ever applied to — was visible only if
  * someone opened the tracker. Which, for three months, nobody did.
  *
+ * Sent BY THE BOT, not by the user to themselves. That distinction is the whole
+ * feature: `--as user --user-id <self>` delivers into the user's own self-chat,
+ * which Feishu does not raise a notification for, so the digest arrives and is
+ * never seen — reproducing exactly the "state nobody looks at" problem it exists
+ * to fix. `--as bot` opens a real p2p conversation that does notify. The first
+ * version shipped the wrong one and the digest sat silently in 我的空间.
+ *
  * Deliberately ONE-WAY. No buttons, no callbacks, no resident process:
  *  - `event consume` would need a long-lived listener; the user ruled that out.
  *  - and `base` is not among the event domains anyway, so a Bitable edit could
@@ -199,13 +206,29 @@ function send(body, dryRun) {
     '--user-id', openId,
     '--markdown', body,
     // One digest per day per recipient, so a double-run can't double-ping.
-    '--idempotency-key', `career-ops:digest:${new Date().toISOString().slice(0, 10)}`,
+    // The `bot` segment matters: the key is honoured independently of the chat,
+    // so a key already spent on the (wrong) user-identity channel would dedupe
+    // the bot send into a silent no-op.
+    '--idempotency-key', `career-ops:digest:bot:${new Date().toISOString().slice(0, 10)}`,
   ];
   if (dryRun) args.push('--dry-run');
 
   try {
-    const out = runLarkCli(args, { write: true, timeoutMs: 30000 });
-    return { ok: true, skipped: false, dryRun, raw: out, data: parseJsonOut(out)?.data ?? null };
+    // as: 'bot' — see the header note. User identity would deliver silently.
+    const out = runLarkCli(args, { write: true, as: 'bot', timeoutMs: 30000 });
+    const data = parseJsonOut(out)?.data ?? null;
+
+    // Verify delivery instead of trusting the exit code. The first version
+    // reported "sent" on exit 0 alone, which told us nothing about whether a
+    // message actually existed — and it did not help when the digest turned out
+    // to be going somewhere unnotified.
+    if (!dryRun && !data?.message_id) {
+      return { ok: false, error: `lark-cli exited 0 but returned no message_id. Raw:\n${out.slice(0, 400)}` };
+    }
+    return {
+      ok: true, skipped: false, dryRun, raw: out, data,
+      messageId: data?.message_id, chatId: data?.chat_id,
+    };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -216,5 +239,5 @@ if (process.argv[1] && process.argv[1].endsWith('notify.mjs')) {
   const res = await sendDigest({ dryRun: process.argv.includes('--dry-run') });
   if (res.skipped) console.log(`\n⏭  ${res.reason}`);
   else if (!res.ok) { console.error(`❌ ${res.error}`); process.exit(1); }
-  else if (!res.dryRun) console.log('✅ digest sent');
+  else if (!res.dryRun) console.log(`✅ digest sent — message ${res.messageId} in chat ${res.chatId}`);
 }

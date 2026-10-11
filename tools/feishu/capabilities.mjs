@@ -189,7 +189,7 @@ function throttle() {
 const JSON_FLAG_COMMANDS = new Set(['auth', 'whoami']);
 
 export function runLarkCli(args, opts = {}) {
-  const { write = false, profile, format = 'json', timeoutMs = 30000 } = opts;
+  const { write = false, profile, format = 'json', timeoutMs = 30000, as } = opts;
 
   if (args.some(a => a === '--yes')) {
     throw new Error(
@@ -210,9 +210,15 @@ export function runLarkCli(args, opts = {}) {
     if (JSON_FLAG_COMMANDS.has(full[0])) full.push('--json');
     else full.push('--format', format);
   }
-  // Writes require user identity: the bot token has read-only scope and write
-  // attempts come back as 91403.
-  if (write && !full.includes('--as')) full.push('--as', 'user');
+  // Writes default to user identity: for `base`, the bot token is read-only and
+  // write attempts come back as 91403.
+  //
+  // `as: 'bot'` overrides it, and `im` genuinely needs that. Sending a message
+  // AS the user TO the user lands in their own self-chat ("我的空间") — which
+  // Feishu does not notify on, so the message arrives and is never seen. Sending
+  // as the bot opens a real p2p conversation with the user, which does notify.
+  // The two go to different chat_ids; this is not cosmetic.
+  if ((write || as) && !full.includes('--as')) full.push('--as', as || 'user');
 
   throttle();
   const result = spawnSync('lark-cli', full, {
