@@ -11,7 +11,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { CAREER_OPS, normalizeCompany, roleFuzzyMatch, isTerminal } from '../tracker-backend.mjs';
+import { CAREER_OPS, normalizeCompany, roleFuzzyMatch, isTerminal, normalizeTrack } from '../tracker-backend.mjs';
 
 // Support both layouts: data/applications.md (current) and applications.md (legacy boilerplate)
 const APPS_FILE = existsSync(join(CAREER_OPS, 'data/applications.md'))
@@ -38,15 +38,20 @@ function readAll() {
   return { lines, apps, maxNum };
 }
 
-// Columns layout (11 cols, 2026-04-20 extended):
-//   | # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At |
-// Legacy layout (9 cols) is still parsed for backward compat; missing URL/Closed At
-// default to ''. formatLine always emits 11 cols.
-function parseAppLine(line) {
+// Columns layout (12 cols, 2026-10-10 extended with Track):
+//   | # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At | Track |
+// Earlier layouts (11 cols pre-Track, 9 cols legacy) are still parsed for backward
+// compat; missing URL/Closed At/Track default to ''. formatLine always emits 12 cols.
+//
+// Track is APPENDED at the end on purpose: every positional index below (1..11)
+// stays exactly where it was, so an 11-col file and a 12-col file parse through
+// the same code path and only the new cell is conditional.
+export function parseAppLine(line) {
   const parts = line.split('|').map(s => s.trim());
   // Split on `|` yields 2 extra empty cells (leading + trailing). Real cell count = parts.length - 2.
   //   9-col legacy layout  → parts.length === 11
-  //   11-col extended      → parts.length === 13
+  //   11-col (pre-Track)   → parts.length === 13
+  //   12-col (with Track)  → parts.length === 14
   const cellCount = parts.length - 2;
   if (cellCount < 9) return null;
   const num = parseInt(parts[1]);
@@ -65,13 +70,24 @@ function parseAppLine(line) {
     report: hasExtended ? parts[9] : parts[8],
     notes: hasExtended ? (parts[10] || '') : (parts[9] || ''),
     closedAt: hasExtended ? (parts[11] || '') : '',
+    // Tolerant on read: a hand-edited cell with a typo'd track should not make the
+    // whole row unparseable, so fall back to '' instead of letting normalizeTrack throw.
+    track: cellCount >= 12 ? safeTrack(parts[12]) : '',
     linked: {},
     _raw: line,
   };
 }
 
-function formatLine(rec) {
-  return `| ${rec.num} | ${rec.date} | ${rec.company} | ${rec.role} | ${rec.score} | ${rec.status} | ${rec.pdf} | ${rec.url || ''} | ${rec.report} | ${rec.notes} | ${rec.closedAt || ''} |`;
+function safeTrack(raw) {
+  try {
+    return normalizeTrack(raw);
+  } catch {
+    return '';
+  }
+}
+
+export function formatLine(rec) {
+  return `| ${rec.num} | ${rec.date} | ${rec.company} | ${rec.role} | ${rec.score} | ${rec.status} | ${rec.pdf} | ${rec.url || ''} | ${rec.report} | ${rec.notes} | ${rec.closedAt || ''} | ${rec.track || ''} |`;
 }
 
 export function create(_cfg) {
@@ -105,6 +121,9 @@ export function create(_cfg) {
         notes: rec.notes || '',
         // Auto-set Closed At when added with terminal status
         closedAt: rec.closedAt || (isTerminal(status) ? today : ''),
+        // Strict on write: a bad track from a TSV should fail loudly here rather
+        // than land in the tracker and quietly skew the per-track funnel.
+        track: normalizeTrack(rec.track),
       };
       const newLine = formatLine(newRec);
 

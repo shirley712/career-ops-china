@@ -15,16 +15,22 @@
  *   URL (url)          ↔ url
  *   Report (text)      ↔ report     (markdown link string)
  *   Notes (long text)  ↔ notes
+ *   Closed At (date)   ↔ closedAt
+ *   Track (select)     ↔ track      (track id, or '' meaning ai-app)
+ *
+ * Read-only formula fields — never written (see normalizedToFields):
+ *   Days Since Added, Lifecycle Flag, Score Value, Direction
  *
  * Hard limits (from lark-base skill):
- *  - Batch 500 records/upsert; sleep 1s between batches
+ *  - Batch limits differ per command: 500/+record-upsert, 200/+record-batch-update.
+ *    Sleep 1s between batches.
  *  - Don't write formula/lookup fields (they're auto-computed)
  *  - Date writes use a "YYYY-MM-DD HH:mm:ss" string, NOT a ms timestamp
  *    (reads tolerate both; see dateToUpsertString / toDateStr below)
  *  - Status value must be in pre-created single-select options
  */
 
-import { normalizeCompany, roleFuzzyMatch, CANONICAL_STATES, isTerminal } from '../tracker-backend.mjs';
+import { normalizeCompany, roleFuzzyMatch, CANONICAL_STATES, isTerminal, normalizeTrack } from '../tracker-backend.mjs';
 // All lark-cli invocation goes through this one module: it guarantees --profile
 // (the CLI default is global state and may point at another tenant), --format
 // json, --as user on writes, and throttling. See tools/feishu/capabilities.mjs.
@@ -59,6 +65,23 @@ function dateToUpsertString(dateStr) {
   return null;
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Single-select fields. On READ they come back as arrays; on WRITE the batch-update
+// CellValue contract also wants an array (["Evaluated"]), while +record-upsert
+// tolerates a bare string. normalizedToFields emits the bare string that upsert
+// has always used, so this adapts it for the batch path rather than changing a
+// write path that works.
+const SELECT_FIELDS = new Set(['Status', 'Track']);
+
+function toBatchCells(fields) {
+  const out = {};
+  for (const [k, v] of Object.entries(fields)) {
+    out[k] = (SELECT_FIELDS.has(k) && typeof v === 'string' && v) ? [v] : v;
+  }
+  return out;
+}
+
 function recordToNormalized(record) {
   const f = record.fields || record;
   const status = Array.isArray(f.Status) ? (f.Status[0] || '') : (f.Status || '');
@@ -80,6 +103,8 @@ function recordToNormalized(record) {
     report: f.Report || '—',
     notes: f.Notes || '',
     closedAt: toDateStr(f['Closed At']),
+    // Select fields come back as an array even when single-valued.
+    track: Array.isArray(f.Track) ? (f.Track[0] || '') : (f.Track || ''),
     linked: {},
     _recordId: record.record_id || record.id,
   };
@@ -108,6 +133,13 @@ function normalizedToFields(rec) {
   if (rec.closedAt !== undefined && rec.closedAt !== '') {
     const s = dateToUpsertString(rec.closedAt);
     if (s) f['Closed At'] = s;
+  }
+  if (rec.track !== undefined) {
+    // normalizeTrack throws on an unknown id — better here than discovering a
+    // bogus select option in the Bitable UI later. '' clears the cell (null,
+    // because a select rejects an empty string).
+    const t = normalizeTrack(rec.track);
+    f.Track = t || null;
   }
   return f;
 }
@@ -261,8 +293,11 @@ export function create(cfg) {
       }
 
       const today = new Date().toISOString().slice(0, 10);
-      const payload = [];
+      // +record-batch-update takes `update_records`: an OBJECT mapping record_id
+      // to that record's field map — not an array of {record_id, fields}.
+      const updateRecords = {};
       const missing = [];
+      let count = 0;
 
       for (const rec of records) {
         const existing = index.get(Number(rec.num));
@@ -275,29 +310,28 @@ export function create(cfg) {
         if (updates.status && isTerminal(updates.status) && !updates.closedAt && !existing.fields?.['Closed At']) {
           withClosed.closedAt = today;
         }
-        payload.push({
-          record_id: existing.record_id || existing.id,
-          fields: normalizedToFields(withClosed),
-        });
+        const id = existing.record_id || existing.id;
+        updateRecords[id] = toBatchCells(normalizedToFields(withClosed));
+        count++;
       }
 
-      // 500 records/request is the documented ceiling; sleep between batches.
-      const BATCH = 500;
-      for (let i = 0; i < payload.length; i += BATCH) {
-        const slice = payload.slice(i, i + BATCH);
+      // 200 records/request — NOT the 500 that +record-upsert allows. Getting
+      // this wrong only shows up above 200 rows, which is why it shipped wrong.
+      const BATCH = 200;
+      const ids = Object.keys(updateRecords);
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const slice = {};
+        for (const id of ids.slice(i, i + BATCH)) slice[id] = updateRecords[id];
         runLarkCli([
           'base', '+record-batch-update',
           '--base-token', appToken,
           '--table-id', tableId,
-          '--json', JSON.stringify(slice),
+          '--json', JSON.stringify({ update_records: slice }),
         ], { write: true, timeoutMs: 120000 });
-        if (i + BATCH < payload.length) {
-          const until = Date.now() + 1000;
-          while (Date.now() < until) { /* 1s between batches */ }
-        }
+        if (i + BATCH < ids.length) await sleep(1000);
       }
 
-      return { updated: payload.length, missing };
+      return { updated: count, missing };
     },
 
     async findByCompanyRole(company, role) {

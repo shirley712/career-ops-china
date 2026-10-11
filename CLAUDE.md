@@ -164,7 +164,10 @@ This system is designed to be customized by YOU (Claude). 用户让你改 archet
 
 ### CV Source of Truth
 
-- `cv.md` in project root is the canonical CV
+- `cv.md` in project root is the **canonical fact layer**: employers, dates, degrees, numbers
+- Per-track variants `cv-<track>.md` (currently `cv-auto.md` for the automotive tracks) are **rewordings** of it. A variant may rephrase, retitle, reorder, drop and re-weight freely; it may NOT state an employer, date, degree or number that `cv.md` does not contain
+- Which source a given evaluation uses is decided by its Track -- see the CV source table in `modes/_profile.md`. Missing variant → fall back to `cv.md` and say so in the report
+- `npm run sync-check` enforces the subset rule and **exits non-zero on fact injection**. Run it before generating a PDF; Chinese employers do run background checks, and two CVs from the same candidate that disagree is the worst way to fail one
 - `article-digest.md` has detailed proof points (optional)
 - **NEVER hardcode metrics** -- read them from these files at evaluation time
 
@@ -217,10 +220,10 @@ This system is designed to be customized by YOU (Claude). 用户让你改 archet
 
 ### TSV Format for Tracker Additions
 
-Write one TSV file per evaluation to `batch/tracker-additions/{num}-{company-slug}.tsv`. Single line, 9 tab-separated columns:
+Write one TSV file per evaluation to `batch/tracker-additions/{num}-{company-slug}.tsv`. Single line, 10 tab-separated columns:
 
 ```
-{num}\t{date}\t{company}\t{role}\t{status}\t{score}/5\t{pdf_emoji}\t[{num}](reports/{num}-{slug}-{date}.md)\t{note}
+{num}\t{date}\t{company}\t{role}\t{status}\t{score}/5\t{pdf_emoji}\t[{num}](reports/{num}-{slug}-{date}.md)\t{note}\t{track}
 ```
 
 **Column order (IMPORTANT -- status BEFORE score):**
@@ -233,8 +236,11 @@ Write one TSV file per evaluation to `batch/tracker-additions/{num}-{company-slu
 7. `pdf` -- `✅` or `❌`
 8. `report` -- markdown link `[num](reports/...)`
 9. `notes` -- one-line summary
+10. `track` -- track id, one of `ai-app` / `ai-app-auto` / `auto-data` / `auto-algo` / `ai-data-bridge` / `ai-gov-bridge` (see `modes/_profile.md` 的 Track 表)
 
-**Note:** In applications.md, score comes BEFORE status. The merge script handles this column swap automatically.
+**Notes:**
+- In applications.md, score comes BEFORE status. The merge script handles this column swap automatically.
+- `track` was appended as column 10 on 2026-10-10, so every pre-existing 9-column TSV still parses. An empty `track` means `ai-app` -- that is a true statement about every row written before the second direction existed, not a fallback. An **unrecognized** value is a hard error (it would silently skew the per-track funnel), so write the id exactly.
 
 ### Pipeline Integrity
 
@@ -319,6 +325,7 @@ Write one TSV file per evaluation to `batch/tracker-additions/{num}-{company-slu
 | `Rejected` | Rejected by company |
 | `Discarded` | Discarded by candidate or offer closed |
 | `SKIP` | Doesn't fit, don't apply |
+| `Blocked` | Evaluated, but held by the evidence gate (see `modes/_profile.md`). **Not terminal** -- no `Closed At`, still counted as live in the funnel; unblocks once the gap is closed |
 
 **RULES:**
 - No markdown bold (`**`) in status field

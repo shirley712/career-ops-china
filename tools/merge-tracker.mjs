@@ -17,7 +17,11 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, renameSync, existsSync } from 'fs';
 import { join, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { readProfileTracker, normalizeCompany, roleFuzzyMatch } from './tracker-backend.mjs';
+import { readProfileTracker, normalizeCompany, roleFuzzyMatch, CANONICAL_STATES, normalizeTrack, TERMINAL_STATES } from './tracker-backend.mjs';
+// The md row codec lives in exactly one place. This file used to carry its own
+// line-for-line copy of parseAppLine plus three hand-written `| ${...} |` template
+// strings, which is how the column count drifted apart in the first place.
+import { parseAppLine as parseAppLineMd, formatLine } from './backends/md-backend.mjs';
 
 // fileURLToPath handles spaces in path correctly (vs .pathname which encodes them as %20)
 // Script lives in tools/; project root is one level up.
@@ -36,7 +40,6 @@ const TRACKER_CFG = readProfileTracker();
 const BACKEND = TRACKER_CFG.backend || 'md';
 
 // Canonical states (must match templates/states.yml — English labels)
-const CANONICAL_STATES = ['Evaluated', 'Applied', 'Responded', 'Interview', 'Offer', 'Rejected', 'Discarded', 'SKIP'];
 
 function validateStatus(status) {
   const clean = status.replace(/\*\*/g, '').replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
@@ -85,32 +88,11 @@ function parseScore(s) {
   return m ? parseFloat(m[1]) : 0;
 }
 
+// Adapter: md-backend returns the source line as `_raw`; this file's dedup logic
+// indexes appLines by `.raw`. Keep the alias rather than renaming 6 call sites.
 function parseAppLine(line) {
-  const parts = line.split('|').map(s => s.trim());
-  // parts.length = cells + 2 (leading + trailing empties from `|...|`).
-  //   9-col legacy layout  → parts.length === 11
-  //   11-col extended      → parts.length === 13
-  const cellCount = parts.length - 2;
-  if (cellCount < 9) return null;
-  const num = parseInt(parts[1]);
-  if (isNaN(num) || num === 0) return null;
-  // 11-col layout (2026-04-20): | # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At |
-  // 9-col legacy layout:         | # | Date | Company | Role | Score | Status | PDF | Report | Notes |
-  const hasExtended = cellCount >= 11;
-  return {
-    num,
-    date: parts[2],
-    company: parts[3],
-    role: parts[4],
-    score: parts[5],
-    status: parts[6],
-    pdf: parts[7],
-    url: hasExtended ? parts[8] : '',
-    report: hasExtended ? parts[9] : parts[8],
-    notes: hasExtended ? (parts[10] || '') : (parts[9] || ''),
-    closedAt: hasExtended ? (parts[11] || '') : '',
-    raw: line,
-  };
+  const rec = parseAppLineMd(line);
+  return rec ? { ...rec, raw: rec._raw } : null;
 }
 
 /**
@@ -158,7 +140,9 @@ function parseTsvContent(content, filename) {
       console.warn(`⚠️  Skipping malformed pipe-delimited ${filename}: ${parts.length} fields`);
       return null;
     }
-    // Format: num | date | company | role | score | status | pdf | report | notes
+    // Format: num | date | company | role | score | status | pdf | report | notes | track
+    // NOTE: .filter(Boolean) above drops EMPTY cells, so a trailing empty track
+    // cell just shortens the row — which is why track is read last and optional.
     addition = {
       num: parseInt(parts[0]),
       date: parts[1],
@@ -169,6 +153,7 @@ function parseTsvContent(content, filename) {
       pdf: parts[6],
       report: parts[7],
       notes: parts[8] || '',
+      track: normalizeTrack(parts[9]),
     };
   } else {
     // Tab-separated
@@ -212,6 +197,9 @@ function parseTsvContent(content, filename) {
       pdf: parts[6],
       report: parts[7],
       notes: parts[8] || '',
+      // 10th column, added 2026-10-10. Appended at the end so every existing
+      // 9-column TSV still parses unchanged; absent == '' == ai-app.
+      track: normalizeTrack(parts[9]),
     };
   }
 
@@ -403,10 +391,23 @@ for (const file of tsvFiles) {
       console.log(`🔄 Update: #${duplicate.num} ${addition.company} — ${addition.role} (${oldScore}→${newScore})`);
       const lineIdx = appLines.indexOf(duplicate.raw);
       if (lineIdx >= 0) {
-        // Preserve existing URL / Closed At; auto-fill Closed At if transitioning to terminal
-        const TERMINAL = new Set(['Rejected', 'Discarded', 'SKIP', 'Offer']);
-        const keepClosedAt = duplicate.closedAt || (TERMINAL.has(duplicate.status) ? addition.date : '');
-        const updatedLine = `| ${duplicate.num} | ${addition.date} | ${addition.company} | ${addition.role} | ${addition.score} | ${duplicate.status} | ${duplicate.pdf} | ${duplicate.url || ''} | ${addition.report} | Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes} | ${keepClosedAt} |`;
+        // Preserve existing URL / Closed At / Track; auto-fill Closed At if transitioning to terminal.
+        // A re-eval only carries a track when the TSV states one — otherwise keep what's there.
+        const keepClosedAt = duplicate.closedAt || (TERMINAL_STATES.has(duplicate.status) ? addition.date : '');
+        const updatedLine = formatLine({
+          num: duplicate.num,
+          date: addition.date,
+          company: addition.company,
+          role: addition.role,
+          score: addition.score,
+          status: duplicate.status,
+          pdf: duplicate.pdf,
+          url: duplicate.url || '',
+          report: addition.report,
+          notes: `Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes}`,
+          closedAt: keepClosedAt,
+          track: addition.track || duplicate.track || '',
+        });
         appLines[lineIdx] = updatedLine;
         updated++;
       }
@@ -420,10 +421,8 @@ for (const file of tsvFiles) {
     if (addition.num > maxNum) maxNum = addition.num;
 
     // Auto-set Closed At for new entries that arrive already in a terminal state.
-    const TERMINAL = new Set(['Rejected', 'Discarded', 'SKIP', 'Offer']);
-    const closedAt = TERMINAL.has(addition.status) ? addition.date : '';
-    const url = addition.url || '';
-    const newLine = `| ${entryNum} | ${addition.date} | ${addition.company} | ${addition.role} | ${addition.score} | ${addition.status} | ${addition.pdf} | ${url} | ${addition.report} | ${addition.notes} | ${closedAt} |`;
+    const closedAt = TERMINAL_STATES.has(addition.status) ? addition.date : '';
+    const newLine = formatLine({ ...addition, num: entryNum, url: addition.url || '', closedAt });
     newLines.push(newLine);
     added++;
     console.log(`➕ Add #${entryNum}: ${addition.company} — ${addition.role} (${addition.score})`);

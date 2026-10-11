@@ -13,7 +13,7 @@
  *   aggregateByStatus()       → Promise<{[status]: number}>
  *
  * Normalized Record shape:
- *   { num, date, company, role, score, status, pdf, report, notes,
+ *   { num, date, company, role, score, status, pdf, report, notes, track,
  *     url (optional, bitable-only), linked (optional) }
  *
  * Callers must not assume backend-specific details. If a field doesn't exist
@@ -160,16 +160,76 @@ export async function aggregateByStatus() {
   return (await getBackend()).aggregateByStatus();
 }
 
-// Shared helpers — used by both backends + callers
+// Shared helpers — used by both backends + callers.
+// This is the single definition; merge-tracker and setup-bitable-tracker import
+// it rather than keeping their own copies (they used to, and drifted).
 export const CANONICAL_STATES = [
   'Evaluated', 'Applied', 'Responded', 'Interview',
-  'Offer', 'Rejected', 'Discarded', 'SKIP',
+  'Offer', 'Rejected', 'Discarded', 'SKIP', 'Blocked',
 ];
 
 // Terminal states = lifecycle ended; Closed At should be populated.
 // Offer is terminal because once received, the candidate decides accept/decline
 // (further state changes are via Applied→Offer→Accepted/Rejected, handled by notes).
+//
+// Blocked is deliberately NOT terminal: it means "evaluated, but held back by a
+// documented evidence gap" (see the evidence gate in modes/_profile.md). It is an
+// active state that unblocks once the candidate closes the gap, so it must not
+// get a Closed At and must not be counted as dead in the funnel.
 export const TERMINAL_STATES = new Set(['Rejected', 'Discarded', 'SKIP', 'Offer']);
+
+// ---- Tracks (skill axis × industry axis) ----
+// The authoritative narrative definition lives in modes/_profile.md's Track table
+// (gitignored — it carries the candidate's profile). This is the machine-readable
+// half: the enum the tracker column, the Bitable select and the gate lookup share.
+//
+// Deliberately an enumeration of the 6 cells we care about, NOT a free Cartesian
+// product of archetype × domain — that would invent cells like "perception × banking".
+export const TRACKS = [
+  'ai-app',          // AI application / Agent, any industry      — primary
+  'ai-app-auto',     // AI application / Agent, automotive        — secondary
+  'auto-data',       // ADAS data loop / data platform (auto only)— secondary
+  'auto-algo',       // ADAS perception / planning algorithms     — evidence-gated
+  'ai-data-bridge',  // AI data platform / data engineering       — bridge
+  'ai-gov-bridge',   // data governance + LLM                     — bridge
+];
+
+// Gate lookup key. modes/_shared.md holds the fit × Tier threshold table; this
+// map is what turns a track into that table's row.
+export const TRACK_FIT = {
+  'ai-app': 'primary',
+  'ai-app-auto': 'secondary',
+  'auto-data': 'secondary',
+  'auto-algo': 'evidence-gated',
+  'ai-data-bridge': 'bridge',
+  'ai-gov-bridge': 'bridge',
+};
+
+// Coarse direction, for funnel grouping. Mirrors the `Direction` formula field in
+// Bitable so md and Bitable group identically.
+export function trackDirection(track) {
+  if (!track) return 'AI';            // empty == ai-app; see normalizeTrack
+  return String(track).includes('auto') ? 'AUTO' : 'AI';
+}
+
+/**
+ * Accept a track value from a TSV / md cell / Bitable select and return either a
+ * valid track id or '' (meaning "unset", which is equivalent to ai-app).
+ *
+ * Empty is legal and is NOT a fallback: every row written before 2026-10-10 was
+ * single-direction ai-app, so a blank cell is a true statement about those rows,
+ * not a missing value. Throwing on unknown values instead of silently coercing
+ * keeps a typo'd track from landing in the tracker and skewing the per-track funnel.
+ */
+export function normalizeTrack(value) {
+  const v = String(value ?? '').trim();
+  if (!v || v === '—' || v === '-') return '';
+  const hit = TRACKS.find(t => t.toLowerCase() === v.toLowerCase());
+  if (!hit) {
+    throw new Error(`Unknown track "${v}". Expected one of ${TRACKS.join(', ')} (or empty for ai-app).`);
+  }
+  return hit;
+}
 
 export function isTerminal(status) {
   return TERMINAL_STATES.has(status);

@@ -13,7 +13,7 @@ node -e 'import("./tools/tracker-backend.mjs").then(async m => {
 
 `data/applications.md` 在 `tracker.backend: bitable` 下是 **`tracker:export` 生成的只读快照** —— 可以读它来快速看一眼，但它可能落后于真源一次 export。要准确数据就走 `listApplications()`。
 
-**当前列（12 列，`Track` 在 Phase 2 加入）：**
+**当前列（12 列）：**
 
 ```
 | # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At | Track |
@@ -58,3 +58,17 @@ node -e 'import("./tools/tracker-backend.mjs").then(async m => {
 - **分 Track 漏斗**（Phase 2 后）：各方向的投递数 / 回应率 / 进面率 —— 这是判断「哪个方向值得继续投」的依据
 
 ⚠️ 统计时注意 2026-07-03 ~ 2026-10-08 的停摆：那之前的 240 条是历史存量，回应率不要和重启后的新投递混算。
+
+## 状态变更的副作用（飞书可选层）
+
+状态不会自己提醒人，所以两处变更会顺手建提醒 —— 全都走 `tools/feishu/schedule.mjs`，
+关掉飞书时退化成写 `data/reminders.md`，不影响状态变更本身：
+
+| 变更 | 副作用 |
+|---|---|
+| → `Applied` | +3 天跟进任务（`npm run sync-outreach` 自动做） |
+| → `Interview` | 日历日程（JD 摘要进描述）+ 面试前 24h 过简历一致性的任务 |
+
+⚠️ **Bitable 没有记录变更的事件流** —— `base` 不在 `event` 的 8 个域里。所以这些副作用只能在
+改状态的那段代码里主动触发，不存在「在 Bitable UI 里拖一下卡片就自动建日程」的方案。
+在 UI 里手改了状态，提醒要自己补（或者改完跑一次 `npm run feishu:digest` 至少能看到超期清单）。

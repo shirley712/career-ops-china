@@ -22,10 +22,11 @@ const APPS_FILE = existsSync(join(CAREER_OPS, 'data/applications.md'))
   ? join(CAREER_OPS, 'data/applications.md')
   : join(CAREER_OPS, 'applications.md');
 
-// 11-column layout (matches md-backend.mjs formatLine):
-// | # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At |
+// 12-column layout — MUST stay byte-identical to md-backend.mjs formatLine, or
+// switching tracker.backend md↔bitable would silently reshape the snapshot.
+// | # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At | Track |
 function formatLine(rec) {
-  return `| ${rec.num} | ${rec.date} | ${rec.company} | ${rec.role} | ${rec.score} | ${rec.status} | ${rec.pdf} | ${rec.url || ''} | ${rec.report} | ${rec.notes} | ${rec.closedAt || ''} |`;
+  return `| ${rec.num} | ${rec.date} | ${rec.company} | ${rec.role} | ${rec.score} | ${rec.status} | ${rec.pdf} | ${rec.url || ''} | ${rec.report} | ${rec.notes} | ${rec.closedAt || ''} | ${rec.track || ''} |`;
 }
 
 async function main() {
@@ -53,8 +54,8 @@ async function main() {
     `     编辑请去: ${baseUrl || '(未配置 base_url)'}`,
     `     手动触发 sync: npm run tracker:export -->`,
     ``,
-    `| # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At |`,
-    `|---|------|---------|------|-------|--------|-----|-----|--------|-------|-----------|`,
+    `| # | Date | Company | Role | Score | Status | PDF | URL | Report | Notes | Closed At | Track |`,
+    `|---|------|---------|------|-------|--------|-----|-----|--------|-------|-----------|-------|`,
   ];
 
   const rows = apps.map(formatLine);

@@ -3,7 +3,7 @@
  * normalize-statuses.mjs — Clean non-canonical states in applications.md
  *
  * Maps all non-canonical statuses to canonical ones per templates/states.yml:
- *   Evaluated, Applied, Responded, Interview, Offer, Rejected, Discarded, SKIP
+ *   Evaluated, Applied, Responded, Interview, Offer, Rejected, Discarded, SKIP, Blocked
  *
  * Recognizes two input families and converts all to English canonical:
  *   - English canonical (already correct)
@@ -25,7 +25,7 @@
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { readProfileTracker } from './tracker-backend.mjs';
+import { readProfileTracker, CANONICAL_STATES } from './tracker-backend.mjs';
 
 const { backend } = readProfileTracker();
 if (backend === 'bitable') {
@@ -74,11 +74,7 @@ function normalizeStatus(raw) {
   if (s === '—' || s === '-' || s === '') return { status: 'Discarded' };
 
   // Already canonical (English) — just normalize casing
-  const canonical = [
-    'Evaluated', 'Applied', 'Responded', 'Interview',
-    'Offer', 'Rejected', 'Discarded', 'SKIP',
-  ];
-  for (const c of canonical) {
+  for (const c of CANONICAL_STATES) {
     if (lower === c.toLowerCase()) return { status: c };
   }
 
@@ -95,6 +91,7 @@ function normalizeStatus(raw) {
     '被拒': 'Rejected', '拒了': 'Rejected', '已拒': 'Rejected', '拒信': 'Rejected',
     '自己放弃': 'Discarded', '已放弃': 'Discarded', '撤回': 'Discarded', '关闭': 'Discarded',
     '不投': 'SKIP', '跳过': 'SKIP',
+    '证据缺口': 'Blocked', '待补证据': 'Blocked',
   };
   if (aliases[lower] || aliases[s]) return { status: aliases[lower] || aliases[s] };
 

@@ -18,7 +18,7 @@
 | `modes/_profile.md` | 总是 | **候选人 archetype、叙事、谈判脚本、自适应包装表** |
 | `config/target_pool.md` | 总是 | **Tier A/B/C/D 公司池、候选人画像、Tier D 触发关键词** |
 | `modes/_shared.md` | 总是 | **framing 规则、中国大陆薪酬源、评分权重、职级对标表、Tier 检测流程** |
-| `CLAUDE.md` | 如遇 TSV / tracker 格式疑问 | TSV 9 列规范和 canonical 状态 |
+| `CLAUDE.md` | 如遇 TSV / tracker 格式疑问 | TSV 10 列规范和 canonical 状态 |
 | `templates/cv-template.html` | 生成 PDF 时 | HTML 模板 |
 | `tools/generate-pdf.mjs` | 生成 PDF 时 | Puppeteer 脚本 |
 
@@ -115,7 +115,7 @@ Body 是完整 A-F + 末尾 15-20 个 JD 关键词（供 ATS）。
 
 写一行 TSV 到 `batch/tracker-additions/{{ID}}.tsv`。**列顺序、canonical 状态、合并规则**见 `CLAUDE.md` 的 "TSV Format for Tracker Additions" 段。
 
-简记：9 列 tab 分隔，顺序 `num date company role status score/5 pdf_emoji [num](reports/...) notes`。status 取值必须是 canonical（`Evaluated` / `Applied` / `Responded` / `Interview` / `Offer` / `Rejected` / `Discarded` / `SKIP`）。
+简记：10 列 tab 分隔，顺序 `num date company role status score/5 pdf_emoji [num](reports/...) notes track`。status 取值必须是 canonical（`Evaluated` / `Applied` / `Responded` / `Interview` / `Offer` / `Rejected` / `Discarded` / `SKIP` / `Blocked`）；track 取 Step 0 判定的那个 track_id（6 个合法值见 `modes/_shared.md`），**写错会直接报错**，不确定就留空（留空 == `ai-app`）。
 
 `{next_num}` 通过读 `data/applications.md` 最后一行计算。
 

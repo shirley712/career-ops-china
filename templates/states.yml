@@ -54,3 +54,12 @@ states:
     aliases: [skip, monitor, 不投, 跳过]
     description: Doesn't fit, don't apply (不匹配，不投)
     dashboard_group: skip
+
+  - id: blocked
+    label: Blocked
+    aliases: [证据缺口, 待补证据]
+    description: >
+      已出完整评估，但命中证据闸门被挡住（如智驾感知岗缺 BEV/OCC 方向的可展示项目）。
+      **非终态** —— 不打 Closed At，漏斗里仍算活跃。补齐证据后可解锁改回 Evaluated 再按闸门判。
+      规则见 modes/_profile.md 的「证据缺口闸门」段。
+    dashboard_group: blocked
