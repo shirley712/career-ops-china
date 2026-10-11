@@ -27,6 +27,9 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400',
+  // Chromium Private/Local Network Access: a public https page calling
+  // localhost sends a preflight that must be answered with this header.
+  'Access-Control-Allow-Private-Network': 'true',
 };
 
 function slugify(s, max = 40) {
