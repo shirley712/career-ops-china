@@ -2,7 +2,13 @@
 
 ## 完整 pipeline
 
-1. 读 `cv.md` 作为真理之源
+0. **先定 track，再选 CV 源**（见 `modes/_profile.md` 的「CV 选源（按 track）」表）：
+   - `ai-app` / `ai-data-bridge` / `ai-gov-bridge` → `cv.md`
+   - `ai-app-auto` / `auto-data` / `auto-algo` → `cv-auto.md`；**缺失则回落 `cv.md`，并在交付说明里写明回落**
+   - 上下文里没有 track（用户直接丢一份 JD 过来）→ 按 `modes/_shared.md` 的 Step 0 先判一次
+1. 读上一步选中的 CV 文件作为**事实层真理之源**
+   - ⚠️ `cv.md` 是 canonical；变体只允许改写措辞/取舍重排，**不能有 `cv.md` 里不存在的雇主、日期、学历或数字**
+   - 生成前跑一次 `npm run sync-check`。它**会以非零退出**拦住事实注入 —— 国内背调查得到，两份自相矛盾的简历是最糟的失败方式
 2. 如果上下文里没有 JD，向用户索取（文本或 URL）
 3. 从 JD 提取 15-20 个关键词
 4. 检测 JD 语言 → 决定 CV 语言
@@ -20,8 +26,11 @@
 11. 把关键词自然注入到现有成就描述中（**永远不要编造新技能**）
 12. 用 template + 个性化内容生成完整 HTML
 13. 把 HTML 写到 `/tmp/cv-candidate-{company}.html`
-14. 执行：`node tools/generate-pdf.mjs /tmp/cv-candidate-{company}.html output/cv-candidate-{company}-{YYYY-MM-DD}.pdf --format={letter|a4}`
-15. 报告：PDF 路径、页数、关键词覆盖率
+14. 执行：`node tools/generate-pdf.mjs /tmp/cv-candidate-{company}.html output/cv-candidate-{company}-{track}-{YYYY-MM-DD}.pdf --format={letter|a4}`
+    - **文件名带 track 后缀**（如 `-ai-app` / `-auto-data`）。同一家车企可能两个方向都投，没有后缀就会互相覆盖，而且事后分不清「这家投的是哪版简历」
+15. 报告：PDF 路径、页数、关键词覆盖率、**用的哪个 CV 源**（回落了就明说）
+
+> `tools/generate-pdf.mjs` 不需要改 —— 它只做 html→pdf，选源发生在本 mode 层。
 
 ## ATS 规则（保证机器能解析）
 
